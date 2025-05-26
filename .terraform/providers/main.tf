@@ -123,9 +123,24 @@ resource "kubernetes_deployment" "app_deployment" {
               }
             }
           }
-        volume_mounts = var.volume_mounts
+
+
+        dynamic "volume_mount" {
+            for_each = var.volume_mounts
+            content {
+                    name       = volume_mount.value.name
+                    mount_path = volume_mount.value.mountPath
+                    read_only  = lookup(volume_mount.value, "readOnly", false)
+                    sub_path   = lookup(volume_mount.value, "subPath", null)
+                 }
+            }
         }
-        volumes = var.volumes
+        dynamic "volume" {
+            for_each = var.volumes
+            content {
+                name = volume.value.name
+                }
+            }
       }
     }
   }
