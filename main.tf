@@ -54,7 +54,18 @@ resource "kubernetes_deployment" "testingapp_deployment" {
       spec {
         container {
           name  = "my-testingapp"
-          image = "europe-west3-docker.pkg.dev/cp-mat-poc-moc-44ac5eea78b4a8e/mat-tool/mat-tool:0.0.4"
+          image = "gcr.io/my-project/testingapp:latest" # Replace with your image
+          image_pull_policy = "Always"
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "128Mi"
+            }
+            limits = {
+              cpu    = "200m"
+              memory = "256Mi"
+            }
+          }
           port {
             container_port = 8080
           }
@@ -100,12 +111,12 @@ resource "kubernetes_ingress_v1" "testingapp_ingress" {
     name      = "testingapp-ingress"
     namespace = kubernetes_namespace.testingapp_namespace.metadata[0].name
     annotations = {
-      "kubernetes.io/ingress.class"                     = "gce-internal"
+      "kubernetes.io/ingress.class"                     = "gce-internal" # Use "gce" for external load balancer for GKE
       "networking.gke.io/internal-load-balancer-allow-global-access" = "true"
       "cloud.google.com/backend-config"                  = jsonencode({"default" = "testingapp_backend_config"})
       "ingress.kubernetes.io/backend-protocol"          = "HTTP"
       "kubernetes.io/ingress.allow-http"                = "false"
-      "ingress.gcp.kubernetes.io/pre-shared-cert"      = "poc-moc-cpdnb-net"
+      "ingress.gcp.kubernetes.io/pre-shared-cert"      = "" # Specify your pre-shared certificate name here for HTTPS traffic
     }
   }
   spec {
@@ -167,7 +178,7 @@ resource "kubernetes_manifest" "testingapp_frontendConfig" {
       namespace = kubernetes_namespace.testingapp_namespace.metadata[0].name
     }
     spec = {
-      sslPolicy     = "poc-moc-cpdnb-net"
+      sslPolicy     = "" # Replace with your SSL policy name
       redirectToHttps = {
         enabled = true
       }
