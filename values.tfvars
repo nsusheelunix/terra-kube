@@ -9,6 +9,7 @@ pvc_size             = "1Gi"
 storage_class_name   = "standard"
 secret_value         = "mysecretvalue"
 selected_stack = "small"
+container_port = 8080
 appstack = {
   small = { memory = "512Mi", cpu = "250m", storage = "1Gi" }
   medium = { memory = "1Gi", cpu = "500m", storage = "5Gi" }

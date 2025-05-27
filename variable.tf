@@ -49,6 +49,10 @@ variable "secret_value" {
   description = "Secret value"
 }
 
+variable "container_port" {
+  description = "The port the container listens on."
+  type        = number
+}
 
 variable "appstack" {
   type = map(object({

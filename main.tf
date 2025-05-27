@@ -52,7 +52,6 @@ resource "kubernetes_deployment" "app_deployment" {
 
     strategy {
       type = "RollingUpdate"
-
       rolling_update {
         max_surge       = "25%"
         max_unavailable = "25%"
@@ -64,7 +63,6 @@ resource "kubernetes_deployment" "app_deployment" {
         labels = {
           app = var.name
         }
-
         annotations = {
           "cluster-autoscaler.kubernetes.io/safe-to-evict" = "true"
         }
@@ -86,19 +84,20 @@ resource "kubernetes_deployment" "app_deployment" {
         }
 
         container {
-          name  = var.name
-          image = var.imgurl
+          name              = var.name
+          image             = var.imgurl
           image_pull_policy = "IfNotPresent"
 
           port {
             name           = "http"
-            container_port = 8080
+            container_port = var.container_port
             protocol       = "TCP"
           }
+
           readiness_probe {
             http_get {
               path = "/"
-              port = 8080
+              port = var.container_port
             }
             initial_delay_seconds = 5
             period_seconds        = 10
@@ -107,11 +106,12 @@ resource "kubernetes_deployment" "app_deployment" {
           liveness_probe {
             http_get {
               path = "/"
-              port = 8080
+              port = var.container_port
             }
             initial_delay_seconds = 15
             period_seconds        = 20
           }
+
           env {
             name = "APPLICATION_PROFILE"
             value_from {
@@ -124,14 +124,12 @@ resource "kubernetes_deployment" "app_deployment" {
 
           dynamic "resources" {
             for_each = var.selected_stack != null && var.appstack[var.selected_stack] != null ? [var.appstack[var.selected_stack]] : []
-
             content {
               requests = {
                 memory              = resources.value.memory
                 cpu                 = resources.value.cpu
                 "ephemeral-storage" = resources.value.storage
               }
-
               limits = {
                 memory              = resources.value.memory
                 cpu                 = resources.value.cpu
@@ -140,23 +138,47 @@ resource "kubernetes_deployment" "app_deployment" {
             }
           }
 
-
-        dynamic "volume_mount" {
+          dynamic "volume_mount" {
             for_each = var.volume_mounts
             content {
-                    name       = volume_mount.value.name
-                    mount_path = volume_mount.value.mountPath
-                    read_only  = lookup(volume_mount.value, "readOnly", false)
-                    sub_path   = lookup(volume_mount.value, "subPath", null)
-                 }
+              name       = volume_mount.value.name
+              mount_path = volume_mount.value.mountPath
+              read_only  = lookup(volume_mount.value, "readOnly", false)
+              sub_path   = lookup(volume_mount.value, "subPath", null)
             }
+          }
         }
+
         dynamic "volume" {
-            for_each = var.volumes
-            content {
-                name = volume.value.name
-                }
+          for_each = var.volumes
+          content {
+            name = volume.value.name
+
+            dynamic "persistent_volume_claim" {
+              for_each = lookup(volume.value, "persistent_volume_claim", null) != null ? [volume.value.persistent_volume_claim] : []
+              content {
+                claim_name = persistent_volume_claim.value.claim_name
+                read_only  = lookup(persistent_volume_claim.value, "readOnly", false)
+              }
             }
+
+            dynamic "config_map" {
+              for_each = lookup(volume.value, "config_map", null) != null ? [volume.value.config_map] : []
+              content {
+                name     = config_map.value.name
+                optional = lookup(config_map.value, "optional", null)
+              }
+            }
+
+            dynamic "secret" {
+              for_each = lookup(volume.value, "secret", null) != null ? [volume.value.secret] : []
+              content {
+                secret_name = secret.value.secret_name
+                optional    = lookup(secret.value, "optional", null)
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -168,10 +190,9 @@ resource "kubernetes_service" "app_service" {
   metadata {
     name      = "${var.name}-service"
     namespace = var.name
-      annotations = {
-        "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
-          }
-
+    annotations = {
+      "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
+    }
     }
 
   spec {
@@ -277,10 +298,12 @@ resource "kubernetes_service_account" "app_sa" {
 
 #####################################################################################################
 # Horizontal Pod Autoscaler
-resource "kubernetes_horizontal_pod_autoscaler"  "app_hpa" {
+resource "kubernetes_horizontal_pod_autoscaler" "app_hpa" {
+  count = var.autoscaling_enabled ? 1 : 0
+
   metadata {
     name      = "${var.name}-hpa"
-    namespace = var.name 
+    namespace = var.name
   }
 
   spec {
@@ -289,41 +312,42 @@ resource "kubernetes_horizontal_pod_autoscaler"  "app_hpa" {
       api_version = "apps/v1"
       kind        = "Deployment"
     }
-    
+
     min_replicas = 1
     max_replicas = 2
 
-    metric { 
+    metric {
       type = "Resource"
       resource {
         name = "cpu"
         target {
-          type   = "Utilization" 
-          average_utilization = 80  
+          type                = "Utilization"
+          average_utilization = 80
         }
       }
     }
 
     behavior {
       scale_down {
-        stabilization_window_seconds = 300 
+        stabilization_window_seconds = 300
         policy {
-          type  = "Pods" 
-          value = 1  
-          period_seconds = 60  
+          type          = "Pods"
+          value         = 1
+          period_seconds = 60
         }
       }
-    
+
       scale_up {
         policy {
-          type  = "Pods"  
-          value = 2  
-          period_seconds = 60  
+          type          = "Pods"
+          value         = 2
+          period_seconds = 60
         }
       }
     }
   }
 }
+
 #####################################################################################################
 # Persistent Volume Claim
 resource "kubernetes_persistent_volume_claim" "app_pvc" {
