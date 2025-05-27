@@ -12,7 +12,7 @@ appstack = {
 volume_mounts = [
   {
     name       = "data-volume"
-    mount_path = "/data"
+    mountPath = "/data"
   }
 ]
 
