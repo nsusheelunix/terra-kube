@@ -177,20 +177,19 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     name      = "${var.name}-ingress"
     namespace = var.name
     annotations = {
-      "kubernetes.io/ingress.class"                     = "gce-internal" # Use "gce" for external load balancer for GKE
-      "networking.gke.io/internal-load-balancer-allow-global-access" = "true"
-      "cloud.google.com/backend-config"                  = jsonencode({"default" = "app_backend_config"})
-      "ingress.kubernetes.io/backend-protocol"          = "HTTP"
-      "kubernetes.io/ingress.allow-http"                = "false"
-      "ingress.gcp.kubernetes.io/pre-shared-cert"      = "" # Specify your pre-shared certificate name here for HTTPS traffic
+      "nginx.ingress.kubernetes.io/rewrite-target" = "/"
+      "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
     }
   }
+
   spec {
+    ingress_class_name = "nginx"  # Ensures NGINX ingress controller handles this
+
     default_backend {
       service {
         name = "${var.name}-service"
         port {
-          number = 443
+          number = 443  # Use 80 if your service isn't exposing TLS
         }
       }
     }
