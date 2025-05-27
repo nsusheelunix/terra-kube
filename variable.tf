@@ -54,35 +54,55 @@ variable "container_port" {
   type        = number
 }
 
+
 variable "appstack" {
+  description = "Map of resource configurations (cpu, memory, storage) for different stacks"
   type = map(object({
-    memory  = string
     cpu     = string
+    memory  = string
     storage = string
   }))
-  description = "Map of resource configurations for different stacks (from .Values.appstack)."
+  default = {}
 }
 
 variable "selected_stack" {
   type        = string
   description = "The selected stack configuration to use for resources (from .Values.selectedStack)."
   # Example: "small"
+  default     = null
 }
 
 
-variable "volume_mounts" {
-  description = "List of volume mounts for the container"
-  type        = list(object({
-    name       = string
-    mountPath  = string
-    readOnly   = optional(bool)
-    subPath    = optional(string)
-  }))
-  default = []
-}
+#variable "volumes" {
+#  type = list(object({
+#    name                  = string
+#    persistent_volume_claim = object({
+#      claim_name = string
+#      read_only  = optional(bool, false)
+#    })
+#  }))
+#  default = [
+#    {
+#      name = "data-volume"
+#        claim_name = "application-pvc"
+##      persistent_volume_claim = {
+#        read_only  = false
+#      }
+#    }
+#  ]
+#}
 
-variable "volumes" {
-  description = "Volumes used in the pod"
-  type        = list(any)
-  default     = []
-}
+#variable "volume_mounts" {
+#  type = list(object({
+#    name      = string
+#    mountPath = string
+#    readOnly  = optional(bool, false)
+# }))
+#  default = [
+ #   {
+ #     name      = "data-volume"
+ #     mountPath = "/usr/share/nginx/html"
+ #     readOnly  = false
+   # }
+  #]
+#}

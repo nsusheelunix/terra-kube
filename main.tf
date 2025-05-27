@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "kubernetes" {
-  config_path = "~/.kube/config" # Path to your kubeconfig file
+  config_path = "~/.kube/config"
 }
 
 #############################################################################################
@@ -32,9 +32,8 @@ resource "kubernetes_config_map" "app_config" {
   }
 }
 
-
 ################################################################################################
-# Deployment
+#Deployment
 resource "kubernetes_deployment" "app_deployment" {
   metadata {
     name      = "${var.name}-deployment"
@@ -94,6 +93,20 @@ resource "kubernetes_deployment" "app_deployment" {
             protocol       = "TCP"
           }
 
+#          dynamic "volume_mount" {
+#            for_each = var.volume_mounts
+#            content {
+#              name       = volume_mount.value.name
+#              mount_path = volume_mount.value.mountPath
+#              read_only  = lookup(volume_mount.value, "readOnly", false)
+          volume_mount {
+            name = "${var.name}-volume"
+            mount_path = "/usr/share/nginx/html"
+            read_only  = false
+            }
+          
+          # End volume_mount
+
           readiness_probe {
             http_get {
               path = "/"
@@ -137,52 +150,31 @@ resource "kubernetes_deployment" "app_deployment" {
               }
             }
           }
+        }  # End container
 
-          dynamic "volume_mount" {
-            for_each = var.volume_mounts
-            content {
-              name       = volume_mount.value.name
-              mount_path = volume_mount.value.mountPath
-              read_only  = lookup(volume_mount.value, "readOnly", false)
-              sub_path   = lookup(volume_mount.value, "subPath", null)
-            }
-          }
-        }
+       # dynamic "volume" {
+       #   for_each = var.volumes
+       #   content {
+       #     name = volume.value.name
 
-        dynamic "volume" {
-          for_each = var.volumes
-          content {
-            name = volume.value.name
-
-            dynamic "persistent_volume_claim" {
-              for_each = lookup(volume.value, "persistent_volume_claim", null) != null ? [volume.value.persistent_volume_claim] : []
-              content {
-                claim_name = persistent_volume_claim.value.claim_name
-                read_only  = lookup(persistent_volume_claim.value, "readOnly", false)
-              }
-            }
-
-            dynamic "config_map" {
-              for_each = lookup(volume.value, "config_map", null) != null ? [volume.value.config_map] : []
-              content {
-                name     = config_map.value.name
-                optional = lookup(config_map.value, "optional", null)
-              }
-            }
-
-            dynamic "secret" {
-              for_each = lookup(volume.value, "secret", null) != null ? [volume.value.secret] : []
-              content {
-                secret_name = secret.value.secret_name
-                optional    = lookup(secret.value, "optional", null)
-              }
+      #    persistent_volume_claim {
+      #        claim_name = volume.value.persistent_volume_claim.claim_name
+      #        read_only  = lookup(volume.value.persistent_volume_claim, "read_only", false)
+       
+      volume {
+          name = "${var.name}-volume"
+          persistent_volume_claim {
+            claim_name = "${var.name}-pvc"
+            read_only  = false
+          } 
+       
+       
             }
           }
         }
       }
     }
-  }
-}
+  
 
 ############################################################################################################### 
 # Service
@@ -193,17 +185,19 @@ resource "kubernetes_service" "app_service" {
     annotations = {
       "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
     }
-    }
+  }
 
   spec {
     selector = {
       app = var.name
     }
+
     port {
-      port = var.service_port
-      target_port = 8080  # Ensure this matches the container port
-      protocol = "TCP"
+      port        = var.service_port
+      target_port = var.container_port
+      protocol    = "TCP"
     }
+
     type = var.service_type
   }
 }
@@ -215,22 +209,23 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     name      = "${var.name}-ingress"
     namespace = var.name
     annotations = {
-      "kubernetes.io/ingress.class"              = "nginx"
-      "nginx.ingress.kubernetes.io/rewrite-target"         = "/"
-      "nginx.ingress.kubernetes.io/ssl-redirect"           = "true"
-      "nginx.ingress.kubernetes.io/proxy-read-timeout"     = "300"
-      "nginx.ingress.kubernetes.io/proxy-send-timeout"     = "300"
-      "nginx.ingress.kubernetes.io/backend-protocol"       = "HTTP"
+      "kubernetes.io/ingress.class"                  = "nginx"
+      "nginx.ingress.kubernetes.io/rewrite-target"   = "/"
+      "nginx.ingress.kubernetes.io/ssl-redirect"     = "true"
+      "nginx.ingress.kubernetes.io/proxy-read-timeout" = "300"
+      "nginx.ingress.kubernetes.io/proxy-send-timeout" = "300"
+      "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
     }
   }
+
   spec {
-    ingress_class_name = "nginx"  # Ensures NGINX ingress controller handles this
+    ingress_class_name = "nginx"
 
     default_backend {
       service {
         name = "${var.name}-service"
         port {
-          number = var.service_port  # Use 80 if your service isn't exposing TLS
+          number = var.service_port
         }
       }
     }
@@ -245,56 +240,6 @@ resource "kubernetes_service_account" "app_sa" {
     namespace = var.name
   }
 }
-
-#######################################################################################
-# BackendConfig - should be used in cloud concepts where health checks and connection draining are required
-# Uncomment and modify the following block if you need to set up a BackendConfig for health checks and connection draining
-# Uncomment the following block if you need to set up a BackendConfig for health checks and connection draining
-#resource "kubernetes_manifest" "app_backend_config" {
-#  manifest = {
-#    apiVersion = "cloud.google.com/v1"
-#    kind       = "BackendConfig"
-#      name      = "${var.name}-backend-config"
-#    metadata = {
-#      namespace = var.name
-#    }
-#    spec = {
- #       drainingTimeoutSec = 300
-##      connectionDraining = {
-#      }
-#      healthCheck = {
-#        checkIntervalSec = 30
-#        healthyThreshold   = 1
-#        port              = 8080
-#        requestPath       = "/"
-#        timeoutSec        = 10
-#        type              = "HTTP"
-#        unhealthyThreshold = 3
-#      }
-#   }
-#  }
-#}
-
-################################################################################################
-# FrontendConfig - should be used in cloud concepts where SSL termination is required
-# Uncomment and modify the following block if you need to set up a FrontendConfig for SSL termination
-# Uncomment the following block if you need to set up a FrontendConfig for SSL termination
-#resource "kubernetes_manifest" "app_frontendConfig" {
-#  manifest = {
-#    apiVersion = "networking.gke.io/v1beta1"
-#    kind       = "FrontendConfig"
-#    metadata = {
-#      namespace = var.name
-#    }
-##      name      = "${var.name}-frontend-config"
-#   spec = {
-#      sslPolicy     = "" # Replace with your SSL policy name
-#      redirectToHttps = {
-#        enabled = true
-#      }
-#    }
-#  }
-#}
 
 #####################################################################################################
 # Horizontal Pod Autoscaler
@@ -318,6 +263,7 @@ resource "kubernetes_horizontal_pod_autoscaler" "app_hpa" {
 
     metric {
       type = "Resource"
+
       resource {
         name = "cpu"
         target {
@@ -358,21 +304,24 @@ resource "kubernetes_persistent_volume_claim" "app_pvc" {
 
   spec {
     access_modes = ["ReadWriteOnce"]
+
     resources {
       requests = {
-        storage = var.pvc_size
+        storage = "1Gi"
       }
     }
 
-    storage_class_name = var.storage_class_name
+    storage_class_name = "standard"
   }
 }
+
 #####################################################################################################
 # Persistent Volume
 resource "kubernetes_persistent_volume" "app_pv" {
   metadata {
     name = "${var.name}-pv"
   }
+
   spec {
     capacity = {
       storage = var.pvc_size
@@ -381,7 +330,7 @@ resource "kubernetes_persistent_volume" "app_pv" {
     access_modes                      = ["ReadWriteOnce"]
     persistent_volume_reclaim_policy = "Retain"
     storage_class_name                = var.storage_class_name
-    
+
     persistent_volume_source {
       host_path {
         path = "/mnt/data/${var.name}"
@@ -390,6 +339,7 @@ resource "kubernetes_persistent_volume" "app_pv" {
     }
   }
 }
+
 #####################################################################################################
 # Secret
 resource "kubernetes_secret" "app_secret" {
@@ -399,11 +349,12 @@ resource "kubernetes_secret" "app_secret" {
   }
 
   data = {
-    secret_key = base64encode(var.secret_value) # Ensure the secret value is base64 encoded
+    secret_key = base64encode(var.secret_value)
   }
 
   type = "Opaque"
 }
+
 #####################################################################################################
 # Role
 resource "kubernetes_role" "app_role" {
@@ -430,7 +381,7 @@ resource "kubernetes_role_binding" "app_role_binding" {
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = var.name
+    name      = "${var.name}-role"
   }
 
   subject {
@@ -439,5 +390,4 @@ resource "kubernetes_role_binding" "app_role_binding" {
     namespace = var.name
   }
 }
-
 #####################################################################################################

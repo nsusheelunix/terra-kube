@@ -15,20 +15,6 @@ appstack = {
   medium = { memory = "1Gi", cpu = "500m", storage = "5Gi" }
 }
 
-volume_mounts = [
-  {
-    name       = "data-volume"
-    mountPath = "/data"
-  }
-]
-
-volumes = [
-    {
-      name     = "data"
-      emptyDir = {}
-    }
-  ]
-
 
 
 
