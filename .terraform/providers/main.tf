@@ -95,7 +95,23 @@ resource "kubernetes_deployment" "app_deployment" {
             container_port = 8080
             protocol       = "TCP"
           }
+          readiness_probe {
+            http_get {
+              path = "/"
+              port = 8080
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 10
+          }
 
+          liveness_probe {
+            http_get {
+              path = "/"
+              port = 8080
+            }
+            initial_delay_seconds = 15
+            period_seconds        = 20
+          }
           env {
             name = "APPLICATION_PROFILE"
             value_from {
@@ -177,11 +193,14 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     name      = "${var.name}-ingress"
     namespace = var.name
     annotations = {
-      "nginx.ingress.kubernetes.io/rewrite-target" = "/"
-      "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
+      "kubernetes.io/ingress.class"              = "nginx"
+      "nginx.ingress.kubernetes.io/rewrite-target"         = "/"
+      "nginx.ingress.kubernetes.io/ssl-redirect"           = "true"
+      "nginx.ingress.kubernetes.io/proxy-read-timeout"     = "300"
+      "nginx.ingress.kubernetes.io/proxy-send-timeout"     = "300"
+      "nginx.ingress.kubernetes.io/backend-protocol"       = "HTTP"
     }
   }
-
   spec {
     ingress_class_name = "nginx"  # Ensures NGINX ingress controller handles this
 
@@ -206,50 +225,54 @@ resource "kubernetes_service_account" "app_sa" {
 }
 
 #######################################################################################
-# BackendConfig
-resource "kubernetes_manifest" "app_backend_config" {
-  manifest = {
-    apiVersion = "cloud.google.com/v1"
-    kind       = "BackendConfig"
-    metadata = {
-      name      = "${var.name}-backend-config"
-      namespace = var.name
-    }
-    spec = {
-      connectionDraining = {
-        drainingTimeoutSec = 300
-      }
-      healthCheck = {
-        checkIntervalSec = 30
-        healthyThreshold   = 1
-        port              = 8080
-        requestPath       = "/"
-        timeoutSec        = 10
-        type              = "HTTP"
-        unhealthyThreshold = 3
-      }
-    }
-  }
-}
+# BackendConfig - should be used in cloud concepts where health checks and connection draining are required
+# Uncomment and modify the following block if you need to set up a BackendConfig for health checks and connection draining
+# Uncomment the following block if you need to set up a BackendConfig for health checks and connection draining
+#resource "kubernetes_manifest" "app_backend_config" {
+#  manifest = {
+#    apiVersion = "cloud.google.com/v1"
+#    kind       = "BackendConfig"
+#      name      = "${var.name}-backend-config"
+#    metadata = {
+#      namespace = var.name
+#    }
+#    spec = {
+ #       drainingTimeoutSec = 300
+##      connectionDraining = {
+#      }
+#      healthCheck = {
+#        checkIntervalSec = 30
+#        healthyThreshold   = 1
+#        port              = 8080
+#        requestPath       = "/"
+#        timeoutSec        = 10
+#        type              = "HTTP"
+#        unhealthyThreshold = 3
+#      }
+#   }
+#  }
+#}
 
 ################################################################################################
-# FrontendConfig
-resource "kubernetes_manifest" "app_frontendConfig" {
-  manifest = {
-    apiVersion = "networking.gke.io/v1beta1"
-    kind       = "FrontendConfig"
-    metadata = {
-      name      = "${var.name}-frontend-config"
-      namespace = var.name
-    }
-    spec = {
-      sslPolicy     = "" # Replace with your SSL policy name
-      redirectToHttps = {
-        enabled = true
-      }
-    }
-  }
-}
+# FrontendConfig - should be used in cloud concepts where SSL termination is required
+# Uncomment and modify the following block if you need to set up a FrontendConfig for SSL termination
+# Uncomment the following block if you need to set up a FrontendConfig for SSL termination
+#resource "kubernetes_manifest" "app_frontendConfig" {
+#  manifest = {
+#    apiVersion = "networking.gke.io/v1beta1"
+#    kind       = "FrontendConfig"
+#    metadata = {
+#      namespace = var.name
+#    }
+##      name      = "${var.name}-frontend-config"
+#   spec = {
+#      sslPolicy     = "" # Replace with your SSL policy name
+#      redirectToHttps = {
+#        enabled = true
+#      }
+#    }
+#  }
+#}
 
 #####################################################################################################
 # Horizontal Pod Autoscaler
@@ -300,3 +323,94 @@ resource "kubernetes_horizontal_pod_autoscaler"  "app_hpa" {
     }
   }
 }
+#####################################################################################################
+# Persistent Volume Claim
+resource "kubernetes_persistent_volume_claim" "app_pvc" {
+  metadata {
+    name      = "${var.name}-pvc"
+    namespace = var.name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = var.pvc_size
+      }
+    }
+
+    storage_class_name = var.storage_class_name
+  }
+}
+#####################################################################################################
+# Persistent Volume
+resource "kubernetes_persistent_volume" "app_pv" {
+  metadata {
+    name = "${var.name}-pv"
+  }
+
+  spec {
+    capacity = {
+      storage = var.pvc_size
+    }
+
+    access_modes = ["ReadWriteOnce"]
+
+    persistent_volume_reclaim_policy = "Retain"
+
+    storage_class_name = var.storage_class_name
+
+    host_path {
+      path = "/mnt/data/${var.name}" # Adjust the path as needed
+    }
+  }
+}
+#####################################################################################################
+# Secret
+resource "kubernetes_secret" "app_secret" {
+  metadata {
+    name      = "${var.name}-secret"
+    namespace = var.name
+  }
+
+  data = {
+    secret_key = base64encode(var.secret_value) # Ensure the secret value is base64 encoded
+  }
+
+  type = "Opaque"
+}
+#####################################################################################################
+# Role
+resource "kubernetes_role" "app_role" {
+  metadata {
+    name      = "${var.name}-role"
+    namespace = var.name
+  }
+
+  rules {
+    api_groups = [""]
+    resources  = ["pods", "services", "configmaps", "secrets"]
+    verbs      = ["get", "list", "watch", "create", "update", "delete"]
+  }
+}
+#####################################################################################################
+# RoleBinding
+resource "kubernetes_role_binding" "app_role_binding" {
+  metadata {
+    name      = "${var.name}-role-binding"
+    namespace = var.name
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role.app_role.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.app_sa.metadata[0].name
+    namespace = var.name
+  }
+}
+#####################################################################################################
