@@ -168,21 +168,22 @@ resource "kubernetes_service" "app_service" {
   metadata {
     name      = "${var.name}-service"
     namespace = var.name
-    annotations = {
-      "networking.gke.io/app-protocols"      = jsonencode({"http" = "HTTP"})
-      "cloud.google.com/backend-config"       = jsonencode({"default" = "app_backend_config"})
-      "networking.gke.io/load-balancer-type" = "Internal"
-      "cloud.google.com/neg"                  = jsonencode({"ingress" = true})
+      annotations = {
+        "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
+          }
+
     }
-  }
+
   spec {
     selector = {
       app = var.name
     }
     port {
-      port = 443
+      port = var.service_port
+      target_port = 8080  # Ensure this matches the container port
+      protocol = "TCP"
     }
-    type = "ClusterIP"
+    type = var.service_type
   }
 }
 
@@ -208,7 +209,7 @@ resource "kubernetes_ingress_v1" "app_ingress" {
       service {
         name = "${var.name}-service"
         port {
-          number = 443  # Use 80 if your service isn't exposing TLS
+          number = var.service_port  # Use 80 if your service isn't exposing TLS
         }
       }
     }
@@ -348,20 +349,20 @@ resource "kubernetes_persistent_volume" "app_pv" {
   metadata {
     name = "${var.name}-pv"
   }
-
   spec {
     capacity = {
       storage = var.pvc_size
     }
 
-    access_modes = ["ReadWriteOnce"]
-
+    access_modes                      = ["ReadWriteOnce"]
     persistent_volume_reclaim_policy = "Retain"
-
-    storage_class_name = var.storage_class_name
-
-    host_path {
-      path = "/mnt/data/${var.name}" # Adjust the path as needed
+    storage_class_name                = var.storage_class_name
+    
+    persistent_volume_source {
+      host_path {
+        path = "/mnt/data/${var.name}"
+        type = "DirectoryOrCreate"
+      }
     }
   }
 }
@@ -387,30 +388,32 @@ resource "kubernetes_role" "app_role" {
     namespace = var.name
   }
 
-  rules {
+  rule {
     api_groups = [""]
-    resources  = ["pods", "services", "configmaps", "secrets"]
-    verbs      = ["get", "list", "watch", "create", "update", "delete"]
+    resources  = ["configmaps", "secrets"]
+    verbs      = ["get", "list", "watch"]
   }
 }
+
 #####################################################################################################
 # RoleBinding
 resource "kubernetes_role_binding" "app_role_binding" {
   metadata {
-    name      = "${var.name}-role-binding"
+    name      = "${var.name}-rolebinding"
     namespace = var.name
   }
 
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role.app_role.metadata[0].name
+    name      = var.name
   }
 
   subject {
     kind      = "ServiceAccount"
-    name      = kubernetes_service_account.app_sa.metadata[0].name
+    name      = "${var.name}-sa"
     namespace = var.name
   }
 }
+
 #####################################################################################################

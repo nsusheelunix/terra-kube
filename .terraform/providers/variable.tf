@@ -23,6 +23,33 @@ variable "imgurl" {
   type        = string
 }
 
+variable "service_port" {
+  description = "The port on which the service will be exposed."
+  type        = number
+}
+
+variable "service_type" {
+  description = "The type of service to create (e.g., ClusterIP, NodePort, LoadBalancer)."
+  type        = string
+}
+
+
+variable "pvc_size" {
+  type        = string
+  description = "Size of the Persistent Volume Claim"
+}
+
+variable "storage_class_name" {
+  type        = string
+  description = "Storage class name"
+}
+
+variable "secret_value" {
+  type        = string
+  description = "Secret value"
+}
+
+
 variable "appstack" {
   type = map(object({
     memory  = string
