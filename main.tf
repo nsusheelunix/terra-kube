@@ -101,7 +101,7 @@ resource "kubernetes_deployment" "app_deployment" {
 #              read_only  = lookup(volume_mount.value, "readOnly", false)
           volume_mount {
             name = "${var.name}-volume"
-            mount_path = "/usr/share/nginx/html"
+            mount_path = "application"
             read_only  = false
             }
           

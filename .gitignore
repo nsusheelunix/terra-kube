@@ -1,0 +1,8 @@
+.terraform*
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.lock.hcl
+# Local .terraform directories
+.terraform/
+# Local .terraform directories
+# Ignore override files as they are usually used for local changes

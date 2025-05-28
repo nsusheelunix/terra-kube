@@ -1,0 +1,18 @@
+# Use official NGINX image
+FROM nginx:alpine
+
+
+# Set a custom port (default NGINX uses 80)
+ENV PORT=80
+
+# Copy custom NGINX config to override the default one
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy static site files
+COPY html/ /usr/share/nginx/html/
+
+# Expose the custom port
+EXPOSE ${PORT}
+
+# Start NGINX
+CMD ["nginx", "-g", "daemon off;"]
